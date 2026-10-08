@@ -31,7 +31,6 @@ export const metadata: Metadata = {
     images: [{ url: "/images/shop/about-1.jpg", width: 800, height: 450, alt: "Lost & Found Tattoo Co. storefront in Ypsilanti, MI" }],
   },
   twitter: { card: "summary_large_image", site: "@pinheadink" },
-  icons: { icon: "/images/brand/arm-logo-cutout.png" },
 };
 
 export const viewport: Viewport = {

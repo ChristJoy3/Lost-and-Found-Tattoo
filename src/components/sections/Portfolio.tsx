@@ -92,7 +92,7 @@ export function Portfolio() {
                 <li key={p.src} className="mb-3 break-inside-avoid md:mb-5">
                   <button
                     type="button"
-                    data-cursor="view"
+                    data-cursor-label="View"
                     onClick={() => setOpenIndex(i)}
                     aria-label={`View larger: ${p.alt}`}
                     className="ink-color group relative block w-full overflow-hidden bg-panel text-left"
