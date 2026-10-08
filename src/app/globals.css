@@ -1,26 +1,378 @@
 @import "tailwindcss";
+@import "lenis/dist/lenis.css";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/*
+  Palette
+  - blood (#B91806, original site red): filled buttons with bone text (AA 5.3:1)
+  - blood-bright (#D91921, sampled from the arm logo): large display accents, CTA band
+  - blood-text (#EF3B2D): small red text on ink (AA 5.0:1)
+  - gold (#B89A5E): thin rules, small labels (AA 7:1 on ink)
+*/
+@theme {
+  --color-ink: #0b0b0b;
+  --color-panel: #161616;
+  --color-panel-2: #1e1e1e;
+  --color-bone: #ede6d6;
+  --color-bone-dim: #b8b0a0;
+  --color-blood: #b91806;
+  --color-blood-bright: #d91921;
+  --color-blood-text: #ef3b2d;
+  --color-gold: #b89a5e;
+
+  --font-display: var(--font-anton), "Impact", "Arial Narrow", sans-serif;
+  --font-flash: var(--font-rye), "Georgia", serif;
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+
+  --radius-none: 0;
+  --ease-ink: cubic-bezier(0.7, 0, 0.2, 1);
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
+@layer base {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    color-scheme: dark;
+    --header-h: 4.5rem;
+  }
+
+  html {
+    background: var(--color-ink);
+    scroll-padding-top: calc(var(--header-h) + 1rem);
+  }
+
+  body {
+    background: var(--color-ink);
+    color: var(--color-bone);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection {
+    background: var(--color-blood);
+    color: var(--color-bone);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-gold);
+    outline-offset: 3px;
+  }
+
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display);
+    font-weight: 400;
+    letter-spacing: 0.01em;
+    line-height: 0.92;
+    text-transform: uppercase;
+    text-wrap: balance;
+  }
+
+  img {
+    user-select: none;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@layer components {
+  /* --- Texture ---------------------------------------------------------- */
+  .grain::after {
+    content: "";
+    position: fixed;
+    inset: -50%;
+    z-index: 60;
+    pointer-events: none;
+    opacity: 0.09;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 0.95 0 0 0 0 0.85 0 0 0 1 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    animation: grain 1.2s steps(6) infinite;
+  }
+
+  .grain-local {
+    position: relative;
+    isolation: isolate;
+  }
+  .grain-local::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    opacity: 0.22;
+    mix-blend-mode: multiply;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  /* --- Lines & frames ---------------------------------------------------- */
+  .gold-rule {
+    height: 1px;
+    border: 0;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      color-mix(in oklab, var(--color-gold) 70%, transparent) 15%,
+      color-mix(in oklab, var(--color-gold) 70%, transparent) 85%,
+      transparent
+    );
+  }
+
+  .eyebrow {
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.28em;
+    text-transform: uppercase;
+    color: var(--color-gold);
+  }
+
+  /* Flash-sheet frame: thin gold border with four corner ornaments. */
+  .flash-frame {
+    position: relative;
+    padding: 0.625rem;
+    border: 1px solid color-mix(in oklab, var(--color-gold) 55%, transparent);
+    background: var(--color-panel);
+  }
+  .flash-frame > .orn {
+    position: absolute;
+    width: 1.25rem;
+    height: 1.25rem;
+    color: var(--color-gold);
+    z-index: 2;
+    pointer-events: none;
+  }
+  .flash-frame > .orn-tl { top: -0.55rem; left: -0.55rem; }
+  .flash-frame > .orn-tr { top: -0.55rem; right: -0.55rem; transform: scaleX(-1); }
+  .flash-frame > .orn-bl { bottom: -0.55rem; left: -0.55rem; transform: scaleY(-1); }
+  .flash-frame > .orn-br { bottom: -0.55rem; right: -0.55rem; transform: scale(-1); }
+
+  /* Needle underline under section headings. */
+  .needle {
+    position: relative;
+    display: inline-block;
+    padding-bottom: 0.18em;
+  }
+  .needle::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    width: 100%;
+    height: 0.09em;
+    min-height: 3px;
+    background: linear-gradient(90deg, var(--color-blood-bright) 92%, var(--color-bone) 92% 94%, transparent 94%);
+    transform-origin: left center;
+    transition: transform 1.1s var(--ease-ink);
+  }
+  html.js .needle:not(.is-in)::after {
+    transform: scaleX(0);
+  }
+
+  /* --- Buttons ---------------------------------------------------------- */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.6rem;
+    min-height: 3rem;
+    padding: 0.85rem 1.5rem;
+    font-weight: 700;
+    font-size: 0.875rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    border: 1px solid transparent;
+    transition:
+      background-color 0.25s,
+      color 0.25s,
+      border-color 0.25s,
+      transform 0.25s;
+  }
+  .btn:active {
+    transform: translateY(1px);
+  }
+  .btn-red {
+    background: var(--color-blood);
+    color: var(--color-bone);
+  }
+  .btn-red:hover {
+    background: #9e1405;
+  }
+  .btn-ghost {
+    border-color: color-mix(in oklab, var(--color-bone) 45%, transparent);
+    color: var(--color-bone);
+  }
+  .btn-ghost:hover {
+    border-color: var(--color-blood-bright);
+    color: var(--color-bone);
+    background: color-mix(in oklab, var(--color-blood) 22%, transparent);
+  }
+  .btn-black {
+    background: var(--color-ink);
+    color: var(--color-bone);
+  }
+  .btn-black:hover {
+    background: var(--color-panel-2);
+  }
+
+  .tag {
+    display: inline-block;
+    padding: 0.4rem 0.75rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    border: 1px solid color-mix(in oklab, var(--color-gold) 60%, transparent);
+    color: var(--color-bone);
+  }
+
+  /* --- Reveal ----------------------------------------------------------- */
+  html.js [data-reveal] {
+    opacity: 0;
+    transform: translateY(28px);
+    transition:
+      opacity 0.9s var(--ease-ink),
+      transform 0.9s var(--ease-ink);
+    transition-delay: var(--reveal-delay, 0s);
+  }
+  html.js [data-reveal].is-in {
+    opacity: 1;
+    transform: none;
+  }
+
+  /* Black & white → colour on hover/focus and once scrolled into view. */
+  .ink-color img {
+    filter: grayscale(1) contrast(1.08) brightness(0.85);
+    transition:
+      filter 0.9s var(--ease-ink),
+      transform 0.9s var(--ease-ink);
+  }
+  .ink-color.is-in img,
+  .ink-color:hover img,
+  .ink-color:focus-visible img {
+    filter: none;
+  }
+  .ink-color:hover img,
+  .ink-color:focus-visible img {
+    transform: scale(1.035);
+  }
+
+  /* --- Marquee ---------------------------------------------------------- */
+  .marquee-text {
+    font-family: var(--font-display);
+    font-size: clamp(4rem, 12vw, 11rem);
+    line-height: 1;
+    text-transform: uppercase;
+    white-space: nowrap;
+    color: transparent;
+    -webkit-text-stroke: 1.5px color-mix(in oklab, var(--color-bone) 70%, transparent);
+  }
+  .marquee-text .star {
+    color: var(--color-blood-bright);
+    -webkit-text-stroke: 0;
+  }
+
+  /* --- FAQ -------------------------------------------------------------- */
+  .faq details {
+    interpolate-size: allow-keywords;
+  }
+  .faq details::details-content {
+    block-size: 0;
+    overflow: hidden;
+    transition:
+      block-size 0.45s var(--ease-ink),
+      content-visibility 0.45s allow-discrete;
+  }
+  .faq details[open]::details-content {
+    block-size: auto;
+  }
+  .faq summary {
+    list-style: none;
+    cursor: pointer;
+  }
+  .faq summary::-webkit-details-marker {
+    display: none;
+  }
+  .faq .plus {
+    transition: transform 0.35s var(--ease-ink);
+  }
+  .faq details[open] .plus {
+    transform: rotate(45deg);
+  }
+
+  /* --- Hero intro (initial states only when JS + motion are available) --- */
+  html.js.motion .hero-logo {
+    clip-path: circle(0% at 50% 50%);
+  }
+  html.js.motion .hero-logo-wrap {
+    filter: url(#ink-rough);
+  }
+  html.js.motion .hero-char,
+  html.js.motion .hero-fade {
+    opacity: 0;
+  }
+
+  /* --- Artist panels: stack over each other on tall desktop screens ------ */
+  @media (min-width: 1024px) and (min-height: 700px) and (prefers-reduced-motion: no-preference) {
+    .stack-panel {
+      position: sticky;
+      top: var(--header-h);
+      height: calc(100svh - var(--header-h));
+      overflow: hidden;
+    }
+  }
+
+  /* --- Custom cursor ---------------------------------------------------- */
+  html.has-cursor,
+  html.has-cursor a,
+  html.has-cursor button {
+    cursor: none;
+  }
+  html.has-cursor input,
+  html.has-cursor textarea,
+  html.has-cursor select {
+    cursor: auto;
+  }
+
+  /* Swipe carousels on mobile. */
+  .snap-row {
+    display: flex;
+    gap: 1rem;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+  .snap-row::-webkit-scrollbar {
+    display: none;
+  }
+  .snap-row > * {
+    scroll-snap-align: start;
+    flex: 0 0 auto;
+  }
+
+  .map-dark {
+    filter: invert(0.92) hue-rotate(180deg) grayscale(0.35) contrast(0.95);
+  }
+}
+
+@keyframes grain {
+  0% { transform: translate(0, 0); }
+  20% { transform: translate(-6%, 4%); }
+  40% { transform: translate(5%, -7%); }
+  60% { transform: translate(-3%, 8%); }
+  80% { transform: translate(7%, 2%); }
+  100% { transform: translate(0, 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  html.js [data-reveal] {
+    transform: none;
+  }
+  .ink-color:hover img,
+  .ink-color:focus-visible img {
+    transform: none;
+  }
 }
