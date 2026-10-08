@@ -1,54 +1,192 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { FULL_MOTION, gsap } from "@/lib/gsap";
+import { gsap } from "@/lib/gsap";
 
-/** Small red dot that grows into a "VIEW" ring over [data-cursor="view"]. */
+// Mouse / trackpad only, never on touch or with reduced motion.
+const CURSOR_QUERY = "(prefers-reduced-motion: no-preference) and (hover: hover) and (pointer: fine)";
+
+/** Points in the stroke: more = longer, silkier tail. */
+const POINTS = 28;
+/** How quickly the head catches the pointer (per 60fps frame). High = no perceived lag. */
+const HEAD_EASE = 0.55;
+/** How quickly each tail point follows the one ahead. Lower = longer, lazier ink. */
+const TAIL_EASE = 0.38;
+/** Head thickness in CSS px at rest, and when over an interactive element. */
+const HEAD_W = 7;
+const HEAD_W_HOVER = 22;
+/** blood-bright, sampled from the arm logo. */
+const INK = "#d91921";
+
+type Pt = { x: number; y: number };
+
+/**
+ * Flowing red-ink cursor: a tapered brush stroke drawn on a canvas, with a heavy head
+ * under the pointer and a hairline tail that trails behind it. Each tail point eases
+ * toward the one ahead, so the stroke stretches with speed and pulls back into a drop
+ * at rest. Drawing sleeps once the ink settles.
+ *
+ * Over links/buttons the head swells into a blot; `data-cursor-label` shows a label.
+ * The native cursor stays visible for accessibility.
+ */
 export function Cursor() {
-  const ref = useRef<HTMLDivElement>(null);
+  const canvas = useRef<HTMLCanvasElement>(null);
+  const label = useRef<HTMLSpanElement>(null);
 
   useEffect(() => {
-    const el = ref.current;
-    if (!el || !matchMedia(`${FULL_MOTION} and (pointer: fine)`).matches) return;
+    const cv = canvas.current;
+    const lb = label.current;
+    const text = lb?.firstElementChild as HTMLElement | null;
+    const ctx = cv?.getContext("2d");
+    if (!cv || !lb || !text || !ctx || !matchMedia(CURSOR_QUERY).matches) return;
 
-    const root = document.documentElement;
-    root.classList.add("has-cursor");
-    const x = gsap.quickTo(el, "x", { duration: 0.18, ease: "power3" });
-    const y = gsap.quickTo(el, "y", { duration: 0.18, ease: "power3" });
+    const pts: Pt[] = Array.from({ length: POINTS }, () => ({ x: -100, y: -100 }));
+    const mouse = { x: -100, y: -100 };
+    const head = { w: HEAD_W, alpha: 0 };
+    let started = false;
+    let asleep = true;
+    const wake = () => (asleep = false);
+
+    const resize = () => {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      cv.width = Math.round(innerWidth * dpr);
+      cv.height = Math.round(innerHeight * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      wake();
+    };
+
+    /** Draws the stroke as one filled, tapered ribbon with a rounded, heavy head. */
+    const draw = () => {
+      ctx.clearRect(0, 0, innerWidth, innerHeight);
+      if (head.alpha <= 0.001) return;
+
+      // Half-widths: full at the head, easing to a hairline at the tail (like a brush lifting off).
+      const left: Pt[] = [];
+      const right: Pt[] = [];
+      for (let i = 0; i < POINTS; i++) {
+        const p = pts[i];
+        const a = pts[Math.max(0, i - 1)];
+        const b = pts[Math.min(POINTS - 1, i + 1)];
+        let nx = -(b.y - a.y);
+        let ny = b.x - a.x;
+        const len = Math.hypot(nx, ny) || 1;
+        nx /= len;
+        ny /= len;
+        const t = i / (POINTS - 1);
+        const hw = (head.w / 2) * Math.pow(1 - t, 1.6) + 0.35 * (1 - t);
+        left.push({ x: p.x + nx * hw, y: p.y + ny * hw });
+        right.push({ x: p.x - nx * hw, y: p.y - ny * hw });
+      }
+
+      ctx.globalAlpha = head.alpha;
+      ctx.fillStyle = INK;
+      ctx.beginPath();
+      // Down the left edge (smoothed through midpoints), to the tail tip, back up the right edge.
+      ctx.moveTo(left[0].x, left[0].y);
+      for (let i = 1; i < POINTS - 1; i++) {
+        ctx.quadraticCurveTo(left[i].x, left[i].y, (left[i].x + left[i + 1].x) / 2, (left[i].y + left[i + 1].y) / 2);
+      }
+      ctx.lineTo(pts[POINTS - 1].x, pts[POINTS - 1].y);
+      for (let i = POINTS - 2; i > 0; i--) {
+        ctx.quadraticCurveTo(right[i].x, right[i].y, (right[i].x + right[i - 1].x) / 2, (right[i].y + right[i - 1].y) / 2);
+      }
+      ctx.lineTo(right[0].x, right[0].y);
+      ctx.closePath();
+      ctx.fill();
+      // The loaded tip of the brush.
+      ctx.beginPath();
+      ctx.arc(pts[0].x, pts[0].y, head.w / 2, 0, Math.PI * 2);
+      ctx.fill();
+    };
+
+    const tick = (_time: number, deltaMs: number) => {
+      if (asleep) return;
+      // Frame-rate independent easing: same feel at 60, 120 or 144 Hz.
+      const f = Math.min(deltaMs, 50) / (1000 / 60);
+      const kHead = 1 - Math.pow(1 - HEAD_EASE, f);
+      const kTail = 1 - Math.pow(1 - TAIL_EASE, f);
+
+      pts[0].x += (mouse.x - pts[0].x) * kHead;
+      pts[0].y += (mouse.y - pts[0].y) * kHead;
+      let motion = Math.abs(mouse.x - pts[0].x) + Math.abs(mouse.y - pts[0].y);
+      for (let i = 1; i < POINTS; i++) {
+        const p = pts[i];
+        const q = pts[i - 1];
+        const dx = (q.x - p.x) * kTail;
+        const dy = (q.y - p.y) * kTail;
+        p.x += dx;
+        p.y += dy;
+        motion += Math.abs(dx) + Math.abs(dy);
+      }
+      draw();
+      // Fully settled into a drop and nothing tweening: stop drawing until the next movement.
+      if (motion < 0.05 && !gsap.isTweening(head)) asleep = true;
+      lb.style.transform = `translate3d(${pts[0].x}px, ${pts[0].y}px, 0)`;
+    };
 
     const move = (e: PointerEvent) => {
-      el.style.opacity = "1";
-      x(e.clientX);
-      y(e.clientY);
-      const view = (e.target as Element | null)?.closest?.('[data-cursor="view"]');
-      el.dataset.mode = view ? "view" : "dot";
+      if (e.pointerType !== "mouse") return;
+      mouse.x = e.clientX;
+      mouse.y = e.clientY;
+      if (!started) {
+        // First movement: start the whole stroke at the pointer (no streak in from a corner).
+        started = true;
+        pts.forEach((p) => {
+          p.x = mouse.x;
+          p.y = mouse.y;
+        });
+        gsap.to(head, { alpha: 1, duration: 0.4, onUpdate: wake });
+      }
+      wake();
     };
-    const leave = () => (el.style.opacity = "0");
 
+    let state: "idle" | "hover" | "label" = "idle";
+    const set = (next: typeof state, value = "") => {
+      if (next === state && next !== "label") return;
+      state = next;
+      gsap.to(head, {
+        w: next === "idle" ? HEAD_W : next === "hover" ? HEAD_W_HOVER : HEAD_W_HOVER * 1.6,
+        duration: 0.6,
+        ease: "expo.out",
+        onUpdate: wake,
+      });
+      if (value) text.textContent = value;
+      gsap.to(text, { autoAlpha: next === "label" ? 1 : 0, duration: 0.3 });
+    };
+    const over = (e: PointerEvent) => {
+      const t = (e.target as Element).closest<HTMLElement>("[data-cursor-label], a, button, summary, label, [data-cursor]");
+      if (!t) return set("idle");
+      if (t.dataset.cursorLabel) return set("label", t.dataset.cursorLabel);
+      set("hover");
+    };
+    const root = document.documentElement;
+    const leaveWindow = () => gsap.to(head, { alpha: 0, duration: 0.3, onUpdate: wake });
+    const enterWindow = () => started && gsap.to(head, { alpha: 1, duration: 0.3, onUpdate: wake });
+
+    resize();
+    gsap.ticker.add(tick);
+    window.addEventListener("resize", resize);
     window.addEventListener("pointermove", move, { passive: true });
-    document.addEventListener("pointerleave", leave);
+    document.addEventListener("pointerover", over, { passive: true });
+    root.addEventListener("pointerleave", leaveWindow);
+    root.addEventListener("pointerenter", enterWindow);
     return () => {
-      root.classList.remove("has-cursor");
+      gsap.ticker.remove(tick);
+      gsap.killTweensOf([head, text]);
+      window.removeEventListener("resize", resize);
       window.removeEventListener("pointermove", move);
-      document.removeEventListener("pointerleave", leave);
+      document.removeEventListener("pointerover", over);
+      root.removeEventListener("pointerleave", leaveWindow);
+      root.removeEventListener("pointerenter", enterWindow);
     };
   }, []);
 
   return (
-    <div
-      ref={ref}
-      aria-hidden="true"
-      data-mode="dot"
-      className="group pointer-events-none fixed left-0 top-0 z-[90] opacity-0 transition-opacity"
-    >
-      <div
-        className="flex size-3 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-blood-bright transition-all duration-300 ease-[var(--ease-ink)]
-          group-data-[mode=view]:size-24 group-data-[mode=view]:border group-data-[mode=view]:border-bone group-data-[mode=view]:bg-blood/30 group-data-[mode=view]:backdrop-blur-[2px]"
-      >
-        <span className="text-[0.7rem] font-bold tracking-[0.3em] text-bone opacity-0 transition-opacity group-data-[mode=view]:opacity-100">
-          VIEW
-        </span>
-      </div>
-    </div>
+    <>
+      <canvas ref={canvas} aria-hidden="true" className="pointer-events-none fixed inset-0 z-[90] h-full w-full" />
+      <span ref={label} aria-hidden="true" className="pointer-events-none fixed left-0 top-0 z-[91] will-change-transform">
+        <span className="invisible absolute -translate-x-1/2 -translate-y-1/2 whitespace-nowrap text-[0.6rem] font-bold uppercase tracking-[0.2em] text-bone opacity-0" />
+      </span>
+    </>
   );
 }
